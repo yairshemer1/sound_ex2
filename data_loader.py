@@ -1,7 +1,7 @@
 import random
 from torch.utils.data.dataset import Dataset
 import torchaudio
-from genre_classifier import Genre
+from utils import Genre
 from torch.utils.data import DataLoader
 import julius
 import os
@@ -60,7 +60,7 @@ class Audioset:
         genre = genre.replace("-", "_")
         label = Genre[genre.upper()].value
         out, sr = torchaudio.load(file_path)
-        return out, label
+        return out.squeeze(), label
 
 
 class DataSet(Dataset):

@@ -1,23 +1,13 @@
+import os
 from abc import abstractmethod
 import torch
-from enum import Enum
 import typing as tp
 from dataclasses import dataclass
 import numpy as np
 from torch.utils.data import DataLoader
+from utils import get_tme_now
 
 from data_loader import DataSet
-
-
-class Genre(Enum):
-    """
-    This enum class is optional and defined for your convinience, you are not required to use it.
-    Please use the int labels this enum defines for the corresponding genras in your predictions.
-    """
-    CLASSICAL: int = 0
-    HEAVY_ROCK: int = 1
-    REGGAE: int = 2
-
 
 @dataclass
 class TrainingParameters:
@@ -29,7 +19,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
     batch_size: int = 32
-    num_epochs: int = 100
+    num_epochs: int = 10
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
 
@@ -68,7 +58,7 @@ class MusicClassifier:
         we will not be observing this method.
         """
 
-        features = torch.rand((32, 1024))
+        features = torch.rand((wavs.shape[0], 1024))
         assert features.shape[1] == self.opt_params.num_of_features
         return features
 
@@ -132,6 +122,14 @@ class MusicClassifier:
         predicted_labels = torch.argmax(genre_score, dim=-1)
         return predicted_labels
 
+    def save_model(self, save_dir):
+        torch.save(self.W, os.path.join(save_dir, 'W.pt'))
+        torch.save(self.b, os.path.join(save_dir, 'b.pt'))
+
+    def load_model(self, load_dir):
+        self.W = torch.load(os.path.join(load_dir, 'W.pt'))
+        self.b = torch.load(os.path.join(load_dir, 'b.pt'))
+
 
 class ClassifierHandler:
 
@@ -147,34 +145,39 @@ class ClassifierHandler:
         train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size)
 
         test_dataset = DataSet(json_dir=training_parameters.test_json_path)
-        test_loader = DataLoader(test_dataset, batch_size=training_parameters.batch_size * 2)
+        test_loader = DataLoader(test_dataset, batch_size=len(test_dataset))
+        test_wavs, test_labels = next(test_loader.__iter__())
+        test_features = model.exctract_feats(test_wavs)
 
         for epoch_num in range(trains_params.num_epochs):
             loss_mean = 0
             for wavs, labels in train_loader:
                 features = model.exctract_feats(wavs)
                 loss_mean += model.backward(features, labels, labels) / len(train_loader)
-                print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean}')
+            print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean}')
 
             # test
-            loss_mean = 0
-            for wavs, labels in test_loader:
-                features = model.exctract_feats(wavs)
-                loss_mean += model.backward(features, labels, labels, train=False) / len(train_loader)
-                print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean}')
+            loss_mean = model.backward(test_features, test_labels, test_labels, train=False)
+            print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean}')
 
+        # model_path = os.path.join('model_files', get_tme_now())
+        # os.makedirs(model_path, exist_ok=True)
+        model_path = 'model_files'
+        model.save_model(model_path)
+        print(f'Model saved to: {model_path}')
         return model
 
 
-
     @staticmethod
-    def get_pretrained_model() -> MusicClassifier:
+    def get_pretrained_model(dir_path='model_files') -> MusicClassifier:
         """
         This function should construct a 'MusicClassifier' object, load it's trained weights / 
         hyperparameters and return the loaded model
         """
-        raise NotImplementedError("function is not implemented")
-
+        opt_params = OptimizationParameters()
+        model = MusicClassifier(opt_params)
+        model.load_model(dir_path)
+        return model
 
 
 def creat_dummy_data():
@@ -207,7 +210,10 @@ def creat_dummy_data():
 
 if __name__ == '__main__':
     trains_params = TrainingParameters()
-    ClassifierHandler.train_new_model(trains_params)
+    model = ClassifierHandler.train_new_model(trains_params)
+
+    new_model = ClassifierHandler.get_pretrained_model()
+
 
     # params = OptimizationParameters()
     # trains_params = TrainingParameters()
