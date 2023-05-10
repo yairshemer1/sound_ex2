@@ -1,9 +1,7 @@
 import random
 from torch.utils.data.dataset import Dataset
 import torchaudio
-import math
-import torch.nn.functional as F
-from torch.utils.data.sampler import RandomSampler
+from genre_classifier import Genre
 from torch.utils.data import DataLoader
 import julius
 import os
@@ -58,7 +56,9 @@ class Audioset:
 
     def __getitem__(self, index):
         sample = self.files[index]
-        file_path, label = sample["path"], sample["label"]
+        file_path, genre = sample["path"], sample["label"]
+        genre = genre.replace("-", "_")
+        label = Genre[genre.upper()].value
         out, sr = torchaudio.load(file_path)
         return out, label
 
