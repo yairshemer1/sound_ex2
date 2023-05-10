@@ -30,9 +30,7 @@ def convert_audio_channels(wav, channels=2):
         wav = wav[..., :channels, :]
     else:
         # Case 4: What is a reasonable choice here?
-        raise ValueError(
-            'The audio file has less channels than requested but is not mono.'
-        )
+        raise ValueError('The audio file has less channels than requested but is not mono.')
     return wav
 
 

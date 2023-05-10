@@ -20,16 +20,9 @@ def evaluate_model(y_true: torch.Tensor, y_pred: torch.Tensor):
         confusion_matrix[y_true[i], y_pred[i]] += 1
     for i in range(num_classes):
         confusion_matrix[i] /= np.sum(confusion_matrix[i])
-    recall = np.mean(
-        [
-            confusion_matrix[i, i] / np.sum(confusion_matrix[i, :])
-            for i in range(num_classes)
-        ]
-    )
+    recall = np.mean([confusion_matrix[i, i] / np.sum(confusion_matrix[i, :]) for i in range(num_classes)])
     # plot confusion matrix
-    df_cm = pd.DataFrame(
-        confusion_matrix, index=[i for i in Genre], columns=[i for i in Genre]
-    )
+    df_cm = pd.DataFrame(confusion_matrix, index=[i for i in Genre], columns=[i for i in Genre])
     plt.figure(figsize=(10, 7))
     ax = sn.heatmap(df_cm, annot=True, cmap='Blues', fmt='.2f')
     ax.xaxis.tick_top()

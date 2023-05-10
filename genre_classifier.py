@@ -23,12 +23,8 @@ class TrainingParameters:
 
     batch_size: int = 32
     num_epochs: int = 10
-    train_json_path: str = (
-        "jsons/train.json"  # you should use this file path to load your train data
-    )
-    test_json_path: str = (
-        "jsons/test.json"  # you should use this file path to load your test data
-    )
+    train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
+    test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
 
 
 @dataclass
@@ -100,9 +96,7 @@ class MusicClassifier:
         We thought it may result in less coding needed if you are to apply it here, hence
         OptimizationParameters are passed to the initialization function
         """
-        labels_one_hot = torch.nn.functional.one_hot(
-            labels.to(torch.int64), num_classes=self.opt_params.num_of_genre
-        )
+        labels_one_hot = torch.nn.functional.one_hot(labels.to(torch.int64), num_classes=self.opt_params.num_of_genre)
         y_pred = self.forward(feats)
 
         # L2 loss
@@ -157,9 +151,7 @@ class ClassifierHandler:
         opt_params = OptimizationParameters()
         model = MusicClassifier(opt_params)
         train_dataset = DataSet(json_dir=training_parameters.train_json_path)
-        train_loader = DataLoader(
-            train_dataset, batch_size=training_parameters.batch_size
-        )
+        train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size)
 
         test_dataset = DataSet(json_dir=training_parameters.test_json_path)
         test_loader = DataLoader(test_dataset, batch_size=len(test_dataset))
@@ -170,15 +162,11 @@ class ClassifierHandler:
             loss_mean = 0
             for wavs, labels in train_loader:
                 features = model.exctract_feats(wavs)
-                loss_mean += model.backward(features, labels, labels) / len(
-                    train_loader
-                )
+                loss_mean += model.backward(features, labels, labels) / len(train_loader)
             print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean}')
 
             # test
-            loss_mean = model.backward(
-                test_features, test_labels, test_labels, train=False
-            )
+            loss_mean = model.backward(test_features, test_labels, test_labels, train=False)
             print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean}')
 
         # model_path = os.path.join('model_files', get_tme_now())
