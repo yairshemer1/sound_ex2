@@ -4,6 +4,9 @@ from enum import Enum
 import typing as tp
 from dataclasses import dataclass
 import numpy as np
+from torch.utils.data import DataLoader
+
+from data_loader import DataSet
 
 
 class Genre(Enum):
@@ -39,8 +42,7 @@ class OptimizationParameters:
     """
     learning_rate: float = 0.001
 
-    # num_of_features: int = 1024
-    num_of_features: int = 2
+    num_of_features: int = 1024
     num_of_genre: int = 3
 
 
@@ -65,10 +67,10 @@ class MusicClassifier:
         this function extract features from a given audio.
         we will not be observing this method.
         """
-        # Suffel
-        # Ufmentaiuon
-        # norm
-        raise NotImplementedError("optional, function is not implemented")
+
+        features = torch.rand((32, 1024))
+        assert features.shape[1] == self.opt_params.num_of_features
+        return features
 
     def forward(self, feats: torch.Tensor) -> tp.Any:
         """
@@ -83,7 +85,7 @@ class MusicClassifier:
 
         return softmax(model_output)
 
-    def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor):
+    def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor, train=True):
         """
         this function should perform a backward pass through the model.
         - calculate loss
@@ -99,6 +101,8 @@ class MusicClassifier:
 
         # L2 loss
         loss = ((labels_one_hot - y_pred) ** 2).mean()
+        if not train:
+            return loss
 
         # calculate gradients
         batch_size = feats.shape[0]
@@ -137,7 +141,31 @@ class ClassifierHandler:
         This function should create a new 'MusicClassifier' object and train it from scratch.
         You could program your training loop / training manager as you see fit.
         """
-        raise NotImplementedError("function is not implemented")
+        opt_params = OptimizationParameters()
+        model = MusicClassifier(opt_params)
+        train_dataset = DataSet(json_dir=training_parameters.train_json_path)
+        train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size)
+
+        test_dataset = DataSet(json_dir=training_parameters.test_json_path)
+        test_loader = DataLoader(test_dataset, batch_size=training_parameters.batch_size * 2)
+
+        for epoch_num in range(trains_params.num_epochs):
+            loss_mean = 0
+            for wavs, labels in train_loader:
+                features = model.exctract_feats(wavs)
+                loss_mean += model.backward(features, labels, labels) / len(train_loader)
+                print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean}')
+
+            # test
+            loss_mean = 0
+            for wavs, labels in test_loader:
+                features = model.exctract_feats(wavs)
+                loss_mean += model.backward(features, labels, labels, train=False) / len(train_loader)
+                print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean}')
+
+        return model
+
+
 
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
@@ -178,19 +206,22 @@ def creat_dummy_data():
     return X, y
 
 if __name__ == '__main__':
-    params = OptimizationParameters()
     trains_params = TrainingParameters()
-    model = MusicClassifier(params)
+    ClassifierHandler.train_new_model(trains_params)
 
-    X, y = creat_dummy_data()
-    X = X.T
-    # f = torch.rand((trains_params.batch_size, params.num_of_features))
-    # l = torch.randint(0, 3, size=(trains_params.batch_size, ))
-    losses = [model.backward(X, y, y) for _ in range(10000)]
-    import matplotlib.pyplot as plt
-    plt.plot(np.arange(len(losses)), losses)
-    plt.show()
-
-    X, y = creat_dummy_data()
-    X = X.T
-    print((model.classify(X) == y).type(torch.float).mean())
+    # params = OptimizationParameters()
+    # trains_params = TrainingParameters()
+    # model = MusicClassifier(params)
+    #
+    # X, y = creat_dummy_data()
+    # X = X.T
+    # # f = torch.rand((trains_params.batch_size, params.num_of_features))
+    # # l = torch.randint(0, 3, size=(trains_params.batch_size, ))
+    # losses = [model.backward(X, y, y) for _ in range(10000)]
+    # import matplotlib.pyplot as plt
+    # plt.plot(np.arange(len(losses)), losses)
+    # plt.show()
+    #
+    # X, y = creat_dummy_data()
+    # X = X.T
+    # print((model.classify(X) == y).type(torch.float).mean())
