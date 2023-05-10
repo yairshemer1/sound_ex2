@@ -3,3 +3,5 @@ torchaudio
 soundfile
 julius
 numpy
+pandas
+seaborn
