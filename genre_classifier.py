@@ -11,6 +11,7 @@ class Genre(Enum):
     This enum class is optional and defined for your convinience, you are not required to use it.
     Please use the int labels this enum defines for the corresponding genras in your predictions.
     """
+
     CLASSICAL: int = 0
     HEAVY_ROCK: int = 1
     REGGAE: int = 2
@@ -22,13 +23,18 @@ class TrainingParameters:
     This dataclass defines a training configuration.
     feel free to add/change it as you see fit, do NOT remove the following fields as we will use
     them in test time.
-    If you add additional values to your training configuration please add them in here with 
+    If you add additional values to your training configuration please add them in here with
     default values (so run won't break when we test this).
     """
+
     batch_size: int = 32
     num_epochs: int = 100
-    train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
-    test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
+    train_json_path: str = (
+        "jsons/train.json"  # you should use this file path to load your train data
+    )
+    test_json_path: str = (
+        "jsons/test.json"  # you should use this file path to load your test data
+    )
 
 
 @dataclass
@@ -37,6 +43,7 @@ class OptimizationParameters:
     This dataclass defines optimization related hyper-parameters to be passed to the model.
     feel free to add/change it as you see fit.
     """
+
     learning_rate: float = 0.001
 
     # num_of_features: int = 1024
@@ -83,7 +90,9 @@ class MusicClassifier:
 
         return softmax(model_output)
 
-    def backward(self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor):
+    def backward(
+        self, feats: torch.Tensor, output_scores: torch.Tensor, labels: torch.Tensor
+    ):
         """
         this function should perform a backward pass through the model.
         - calculate loss
@@ -91,10 +100,12 @@ class MusicClassifier:
         - update gradients using SGD
 
         Note: in practice - the optimization process is usually external to the model.
-        We thought it may result in less coding needed if you are to apply it here, hence 
+        We thought it may result in less coding needed if you are to apply it here, hence
         OptimizationParameters are passed to the initialization function
         """
-        labels_one_hot = torch.nn.functional.one_hot(labels.to(torch.int64), num_classes=self.opt_params.num_of_genre)
+        labels_one_hot = torch.nn.functional.one_hot(
+            labels.to(torch.int64), num_classes=self.opt_params.num_of_genre
+        )
         y_pred = self.forward(feats)
 
         # L2 loss
@@ -102,8 +113,8 @@ class MusicClassifier:
 
         # calculate gradients
         batch_size = feats.shape[0]
-        dW = - 2 * feats.T.matmul(labels_one_hot - y_pred) / batch_size
-        db = - 2 * torch.sum(labels_one_hot - y_pred, dim=0) / batch_size
+        dW = -2 * feats.T.matmul(labels_one_hot - y_pred) / batch_size
+        db = -2 * torch.sum(labels_one_hot - y_pred, dim=0) / batch_size
 
         # update weights
         self.W = self.W - self.opt_params.learning_rate * dW
@@ -113,14 +124,14 @@ class MusicClassifier:
 
     def get_weights_and_biases(self) -> tp.Tuple[torch.Tensor, torch.Tensor]:
         """
-        This function returns the weights and biases associated with this model object, 
+        This function returns the weights and biases associated with this model object,
         should return a tuple: (weights, biases)
         """
         return self.W, self.b
 
     def classify(self, wavs: torch.Tensor) -> torch.Tensor:
         """
-        this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor) 
+        this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor)
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
         # features = self.exctract_feats(wavs)
@@ -130,7 +141,6 @@ class MusicClassifier:
 
 
 class ClassifierHandler:
-
     @staticmethod
     def train_new_model(training_parameters: TrainingParameters) -> MusicClassifier:
         """
@@ -142,11 +152,10 @@ class ClassifierHandler:
     @staticmethod
     def get_pretrained_model() -> MusicClassifier:
         """
-        This function should construct a 'MusicClassifier' object, load it's trained weights / 
+        This function should construct a 'MusicClassifier' object, load it's trained weights /
         hyperparameters and return the loaded model
         """
         raise NotImplementedError("function is not implemented")
-
 
 
 def creat_dummy_data():
@@ -162,13 +171,21 @@ def creat_dummy_data():
 
     # Generate 100 samples from each of the Gaussians
     num_samples = 100
-    gaussian1_samples = torch.randn(num_samples, 2) @ torch.diag(torch.sqrt(cov1)) + mean1.unsqueeze(-1)
-    gaussian2_samples = torch.randn(num_samples, 2) @ torch.diag(torch.sqrt(cov2)) + mean2.unsqueeze(-1)
-    gaussian3_samples = torch.randn(num_samples, 2) @ torch.diag(torch.sqrt(cov3)) + mean3.unsqueeze(-1)
+    gaussian1_samples = torch.randn(num_samples, 2) @ torch.diag(
+        torch.sqrt(cov1)
+    ) + mean1.unsqueeze(-1)
+    gaussian2_samples = torch.randn(num_samples, 2) @ torch.diag(
+        torch.sqrt(cov2)
+    ) + mean2.unsqueeze(-1)
+    gaussian3_samples = torch.randn(num_samples, 2) @ torch.diag(
+        torch.sqrt(cov3)
+    ) + mean3.unsqueeze(-1)
 
     # Concatenate the samples and labels
     X = torch.cat((gaussian1_samples, gaussian2_samples, gaussian3_samples), dim=-1)
-    y = torch.cat((torch.zeros(num_samples), torch.ones(num_samples), torch.ones(num_samples) * 2))
+    y = torch.cat(
+        (torch.zeros(num_samples), torch.ones(num_samples), torch.ones(num_samples) * 2)
+    )
 
     # Shuffle the data
     perm = torch.randperm(num_samples * 3)
@@ -176,6 +193,7 @@ def creat_dummy_data():
     y = y[perm]
 
     return X, y
+
 
 if __name__ == '__main__':
     params = OptimizationParameters()
@@ -188,6 +206,7 @@ if __name__ == '__main__':
     # l = torch.randint(0, 3, size=(trains_params.batch_size, ))
     losses = [model.backward(X, y, y) for _ in range(10000)]
     import matplotlib.pyplot as plt
+
     plt.plot(np.arange(len(losses)), losses)
     plt.show()
 

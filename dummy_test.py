@@ -19,8 +19,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Get pretrained object dummy test failed, exception:\n{e}")
 
-    # feel free to add tests here. 
+    # feel free to add tests here.
     # We will not be giving score to submitted tests.
     # You may (and recommended to) share tests with one another.
-
-    
