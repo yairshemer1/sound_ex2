@@ -30,10 +30,10 @@ class FeatureExtractor:
             n_mels=self.n_mels
         )
 
-    def extract_feats(self, wav):
-        return torch.stack([self.extract_feats_one_example(one_wav) for one_wav in wav])
+    # def extract_feats(self, wav):
+    #     return torch.stack([self.extract_feats_one_example(one_wav) for one_wav in wav])
 
-    def extract_feats_one_example(self, one_wav):
+    def extract_feats(self, one_wav):
         # mfcc = self.mfcc_gen(y=one_wav.numpy())
         # return self.plot_log_mel_spectrogram(mfcc)
 
@@ -63,12 +63,11 @@ class FeatureExtractor:
         np.save(os.path.join(save_dir, "std.npy"), std)
 
     def load_mean_std(self, load_dir):
-        mean = np.load(os.path.join(load_dir, "mean.npy"))
-        std = np.load(os.path.join(load_dir, "std.npy"))
-        return mean, std
+        self.mean = np.load(os.path.join(load_dir, "mean.npy"))
+        self.std = np.load(os.path.join(load_dir, "std.npy"))
 
     def calc_mean_std(self, train_dataset, save_dir):
-        feats_arr = [self.extract_feats_one_example(wav) for wav, _ in train_dataset]
+        feats_arr = [self.extract_feats(wav) for wav, _ in train_dataset]
         feats_tensor = torch.stack(feats_arr)
         mean = feats_tensor.mean(dim=0)
         std = feats_tensor.std(dim=0)

@@ -41,13 +41,13 @@ def convert_audio(wav, from_samplerate, to_samplerate, channels):
 
 
 class Audioset:
-    def __init__(self, files=None, shuffle=True, sample_rate=None, convert=False):
+    def __init__(self, files=None, shuffle=True, sample_rate=None, feature_cache=None):
         """
         files should be a list [(file, length)]
         """
         self.files = files
         self.sample_rate = sample_rate
-        self.convert = convert
+        self.feature_cache = feature_cache
         if shuffle:
             random.shuffle(self.files)
 
@@ -59,12 +59,15 @@ class Audioset:
         file_path, genre = sample["path"], sample["label"]
         genre = genre.replace("-", "_")
         label = Genre[genre.upper()].value
-        out, sr = torchaudio.load(file_path)
+        if self.feature_cache is None:
+            out, sr = torchaudio.load(file_path)
+        else:
+            out = self.feature_cache[file_path]
         return out.squeeze(), label
 
 
 class DataSet(Dataset):
-    def __init__(self, json_dir, sample_rate=None):
+    def __init__(self, json_dir, sample_rate=None, feature_cache=None):
         """__init__.
 
         :param json_dir: directory containing both clean.json and noisy.json
@@ -76,7 +79,7 @@ class DataSet(Dataset):
         with open(files_json, 'r') as f:
             clean = json.load(f)
 
-        self.dataset = Audioset(clean, sample_rate=sample_rate)
+        self.dataset = Audioset(clean, sample_rate=sample_rate, feature_cache=feature_cache)
 
     def __getitem__(self, index):
         return self.dataset[index]
