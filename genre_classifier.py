@@ -9,6 +9,7 @@ from utils import get_tme_now
 
 from evaluate import evaluate_model, get_model_accuracy
 from data_loader import DataSet
+from feature_extractor import FeatureExtractor
 
 
 @dataclass
@@ -26,6 +27,7 @@ class TrainingParameters:
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
 
+    save_dir: str = 'model_files'
 
 
 @dataclass
@@ -37,7 +39,7 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 1024
+    num_of_features: int = 1040
     num_of_genre: int = 3
     eval_every: int = 5
 
@@ -47,7 +49,7 @@ class MusicClassifier:
     You should Implement your classifier object here
     """
 
-    def __init__(self, opt_params: OptimizationParameters, **kwargs):
+    def __init__(self, opt_params: OptimizationParameters, feature_extract, **kwargs):
         """
         This defines the classifier object.
         - You should defiend your weights and biases as class components here.
@@ -55,6 +57,7 @@ class MusicClassifier:
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
         self.opt_params = opt_params
+        self.feature_extract = feature_extract
         self.W = torch.rand((opt_params.num_of_features, opt_params.num_of_genre))
         self.b = torch.rand(opt_params.num_of_genre)
 
@@ -64,7 +67,7 @@ class MusicClassifier:
         we will not be observing this method.
         """
 
-        features = torch.rand((wavs.shape[0], 1024))
+        features = self.feature_extract.extract_normed_feats(wavs)
         assert features.shape[1] == self.opt_params.num_of_features
         return features
 
@@ -154,9 +157,14 @@ class ClassifierHandler:
         You could program your training loop / training manager as you see fit.
         """
         opt_params = OptimizationParameters()
-        model = MusicClassifier(opt_params)
+
         train_dataset = DataSet(json_dir=training_parameters.train_json_path)
         train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size)
+
+        feature_extract = FeatureExtractor()
+        feature_extract.calc_mean_std(train_dataset, training_parameters.save_dir)
+
+        model = MusicClassifier(opt_params, feature_extract)
 
         test_dataset = DataSet(json_dir=training_parameters.test_json_path)
         test_loader = DataLoader(test_dataset, batch_size=len(test_dataset))
@@ -178,11 +186,8 @@ class ClassifierHandler:
                 loss_mean, acc = model.backward(test_features, test_labels, test_labels, train=False)
                 print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc:.3f}')
 
-        # model_path = os.path.join('model_files', get_tme_now())
-        # os.makedirs(model_path, exist_ok=True)
-        model_path = 'model_files'
-        model.save_model(model_path)
-        print(f'Model saved to: {model_path}')
+        model.save_model(training_parameters.save_dir)
+        print(f'Model saved to: {training_parameters.save_dir}')
 
         test_pred = model.classify(test_wavs)
         evaluate_model(test_labels, test_pred)
@@ -196,7 +201,9 @@ class ClassifierHandler:
         hyperparameters and return the loaded model
         """
         opt_params = OptimizationParameters()
-        model = MusicClassifier(opt_params)
+        feature_extract = FeatureExtractor()
+        feature_extract.load_mean_std(dir_path)
+        model = MusicClassifier(opt_params, feature_extract)
         model.load_model(dir_path)
         return model
 
