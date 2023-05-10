@@ -43,17 +43,12 @@ def convert_audio(wav, from_samplerate, to_samplerate, channels):
 
 
 class Audioset:
-    def __init__(self, files=None, length=None, stride=None,
-                 shuffle=True, sample_rate=None,
-                 channels=None, convert=False):
+    def __init__(self, files=None, shuffle=True, sample_rate=None, convert=False):
         """
         files should be a list [(file, length)]
         """
         self.files = files
-        self.length = length
-        self.stride = stride or length
         self.sample_rate = sample_rate
-        self.channels = channels
         self.convert = convert
         if shuffle:
             random.shuffle(self.files)
@@ -69,8 +64,7 @@ class Audioset:
 
 
 class DataSet(Dataset):
-    def __init__(self, json_dir, length=None, stride=None,
-                 sample_rate=None, convert=None):
+    def __init__(self, json_dir, sample_rate=None):
         """__init__.
 
         :param json_dir: directory containing both clean.json and noisy.json
@@ -82,8 +76,7 @@ class DataSet(Dataset):
         with open(files_json, 'r') as f:
             clean = json.load(f)
 
-        kw = {'length': length, 'stride': stride, 'sample_rate': sample_rate, 'convert': convert}
-        self.dataset = Audioset(clean, **kw)
+        self.dataset = Audioset(clean, sample_rate=sample_rate)
 
     def __getitem__(self, index):
         return self.dataset[index]
@@ -96,7 +89,7 @@ if __name__ == '__main__':
     train_json_path: str = "jsons/train.json"
     test_json_path: str = "jsons/test.json"
 
-    dataset = DataSet(json_dir=train_json_path, length=16000, stride=16000, sample_rate=16000, convert=True)
+    dataset = DataSet(json_dir=train_json_path)
     loader = DataLoader(dataset, batch_size=32)
     for batch in loader:
         pass
