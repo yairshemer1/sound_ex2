@@ -4,6 +4,7 @@ import torch
 import typing as tp
 from dataclasses import dataclass
 import numpy as np
+from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from utils import get_tme_now
 
@@ -170,7 +171,10 @@ class ClassifierHandler:
         test_loader = DataLoader(test_dataset, batch_size=len(test_dataset))
         test_wavs, test_labels = next(test_loader.__iter__())
         test_features = model.exctract_feats(test_wavs)
-
+        test_losses = []
+        test_epochs = []
+        train_losses = []
+        train_epochs = []
         for epoch_num in range(trains_params.num_epochs):
             loss_mean = 0
             acc_mean = 0
@@ -180,14 +184,27 @@ class ClassifierHandler:
                 loss_mean += loss / len(train_loader)
                 acc_mean += acc / len(train_loader)
             print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc_mean:.3f}')
+            train_losses.append(loss_mean)
+            train_epochs.append(epoch_num)
 
             # test
             if (epoch_num + 1) % opt_params.eval_every == 0:
                 loss_mean, acc = model.backward(test_features, test_labels, test_labels, train=False)
                 print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc:.3f}')
+                test_losses.append(loss_mean)
+                test_epochs.append(epoch_num)
 
         model.save_model(training_parameters.save_dir)
         print(f'Model saved to: {training_parameters.save_dir}')
+
+        # plot the loss graph
+        plt.plot(train_epochs, train_losses, label='train')
+        plt.plot(test_epochs, test_losses, label='test')
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.legend()
+        plt.savefig(os.path.join(training_parameters.save_dir, 'loss_graph.png'))
+        plt.show()
 
         test_pred = model.classify(test_wavs)
         evaluate_model(test_labels, test_pred)
