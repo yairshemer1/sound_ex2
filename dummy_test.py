@@ -1,7 +1,6 @@
 from genre_classifier import *
 
 if __name__ == "__main__":
-
     handler = ClassifierHandler()
 
     # check that training is working

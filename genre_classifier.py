@@ -25,7 +25,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
 
-    batch_size: int = 64
+    batch_size: int = 32
     num_epochs: int = 200
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
@@ -42,7 +42,7 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 55320
+    num_of_features: int = 76053
     num_of_genre: int = 3
     eval_every: int = 10
 
@@ -96,11 +96,11 @@ class MusicClassifier:
         return softmax(model_output)
 
     def backward(
-            self,
-            feats: torch.Tensor,
-            y_pred: torch.Tensor,
-            labels: torch.Tensor,
-            train=True,
+        self,
+        feats: torch.Tensor,
+        y_pred: torch.Tensor,
+        labels: torch.Tensor,
+        train=True,
     ):
         """
         this function should perform a backward pass through the model.
@@ -172,7 +172,6 @@ class ClassifierHandler:
         opt_params = OptimizationParameters()
         feature_extractor = FeatureExtractor()
 
-
         # feature_cache = FeatureCache(feature_extractor)
 
         feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
@@ -186,7 +185,7 @@ class ClassifierHandler:
         model = MusicClassifier(opt_params, feature_extractor)
 
         train_dataset = DataSet(json_dir=training_parameters.train_json_path, feature_cache=feature_cache)
-        train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size)
+        train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size, shuffle=True)
 
         test_dataset = DataSet(json_dir=training_parameters.test_json_path, feature_cache=feature_cache)
         test_loader = DataLoader(test_dataset, batch_size=len(test_dataset))

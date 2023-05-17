@@ -20,23 +20,42 @@ class FeatureExtractor:
         hop_length = 512
         amplitude_envelope = []
         for i in range(0, len(one_wav), hop_length):
-            amplitude_envelope.append(np.abs(one_wav[i:i+hop_length]).max())
+            amplitude_envelope.append(np.abs(one_wav[i : i + hop_length]).max())
         return torch.tensor(amplitude_envelope)
 
-
     def extract_feats(self, one_wav):
-        mfcc = torchaudio.transforms.MFCC(sample_rate=self.sample_rate, n_mfcc=40)(one_wav).flatten()
-        spectral_centroid = librosa.feature.spectral_centroid(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav.numpy()).squeeze()
-        tempo = librosa.beat.tempo(y=one_wav.numpy(), sr=self.sample_rate).flatten()
-        amplitude_envelope = self.extract_amplitude_envelope(one_wav.numpy().squeeze())
+        mfcc = torchaudio.transforms.MFCC(sample_rate=self.sample_rate, n_mfcc=50)(one_wav).numpy().squeeze()
+        one_wav = one_wav.numpy().squeeze()
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav).squeeze()
+        spectral_centroid = librosa.feature.spectral_centroid(y=one_wav, sr=self.sample_rate).squeeze()
+        tempo = librosa.beat.tempo(y=one_wav, sr=self.sample_rate).flatten()
+        chroma_stft = librosa.feature.chroma_stft(y=one_wav, sr=self.sample_rate).flatten()
+        rms = librosa.feature.rms(y=one_wav).squeeze()
+        amplitude_envelope = self.extract_amplitude_envelope(one_wav)
         amplitude_envelope_diff = np.diff(amplitude_envelope)
 
-        return torch.Tensor(np.concatenate([mfcc, spectral_centroid, zero_crossing_rate, tempo, amplitude_envelope, amplitude_envelope_diff]))
+        stats_feats = [one_wav.std(), one_wav.mean()] + [np.percentile(one_wav, i) for i in range(0, 101, 10)]
+        mfcc_stats = [mfcc.std(axis=1), mfcc.mean(axis=1)] + [np.percentile(mfcc, i, axis=1) for i in range(0, 101, 10)]
+        return torch.Tensor(
+            np.concatenate(
+                [
+                    np.array(mfcc_stats).flatten(),
+                    np.array(stats_feats),
+                    mfcc.flatten(),
+                    chroma_stft,
+                    zero_crossing_rate,
+                    tempo,
+                    rms,
+                    amplitude_envelope,
+                    amplitude_envelope_diff,
+                    spectral_centroid,
+                ]
+            )
+        )
 
     def normalize(self, x):
-        # return x
-        return (x - self.mean) / np.maximum(self.std, 0.0001)
+        return x
+        # return (x - self.mean) / np.maximum(self.std, 0.0001)
         # return x - self.mean
 
     def extract_normed_feats(self, wav):
