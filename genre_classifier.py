@@ -40,7 +40,7 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 1040
+    num_of_features: int = 67600
     num_of_genre: int = 3
     eval_every: int = 10
 
@@ -61,6 +61,7 @@ class MusicClassifier:
         self.feature_extractor = feature_extractor
         self.W = torch.rand((opt_params.num_of_features, opt_params.num_of_genre))
         self.b = torch.rand(opt_params.num_of_genre)
+
 
     def exctract_feats(self, wavs: torch.Tensor):
         """
@@ -162,8 +163,8 @@ class ClassifierHandler:
 
         feature_cache = FeatureCache(feature_extractor)
 
-        # dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
-        # feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
+        dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
+        feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
         feature_extractor.load_mean_std(training_parameters.save_dir)
 
         model = MusicClassifier(opt_params, feature_extractor)

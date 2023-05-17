@@ -34,15 +34,26 @@ class FeatureExtractor:
     #     return torch.stack([self.extract_feats_one_example(one_wav) for one_wav in wav])
 
     def extract_feats(self, one_wav):
-        # mfcc = self.mfcc_gen(y=one_wav.numpy())
-        # return self.plot_log_mel_spectrogram(mfcc)
-
+        mfcc = self.mfcc_gen(y=one_wav.numpy()).flatten()
         spectral_centroid = librosa.feature.spectral_centroid(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav.numpy()).squeeze()
-        return torch.Tensor(np.concatenate([spectral_centroid, zero_crossing_rate]))
+
+        # tempo = librosa.beat.tempo(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # onset_env = librosa.onset.onset_strength(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # chroma_cqt = librosa.feature.chroma_cqt(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # chroma_cens = librosa.feature.chroma_cens(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # chroma_stft = librosa.feature.chroma_stft(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # spectral_contrast = librosa.feature.spectral_contrast(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # spectral_bandwidth = librosa.feature.spectral_bandwidth(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # spectral_rolloff = librosa.feature.spectral_rolloff(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+        # spectral_flatness = librosa.feature.spectral_flatness(y=one_wav.numpy()).squeeze()
+
+
+        return torch.Tensor(np.concatenate([mfcc, spectral_centroid, zero_crossing_rate]))
 
     def normalize(self, x):
-        return (x - self.mean) / self.std
+        # return x
+        return (x - self.mean) / np.maximum(self.std, 0.0001)
 
     def extract_normed_feats(self, wav):
         assert self.mean is not None and self.std is not None, "Mean and std not set"
