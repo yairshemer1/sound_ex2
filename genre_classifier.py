@@ -12,6 +12,7 @@ from data_loader import DataSet
 from feature_extractor import FeatureExtractor
 from feature_cache import FeatureCache
 
+plt.style.use('ggplot')
 
 @dataclass
 class TrainingParameters:
@@ -40,7 +41,7 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 67600
+    num_of_features: int = 12480
     num_of_genre: int = 3
     eval_every: int = 10
 
@@ -89,7 +90,7 @@ class MusicClassifier:
     def backward(
         self,
         feats: torch.Tensor,
-        output_scores: torch.Tensor,
+        y_pred: torch.Tensor,
         labels: torch.Tensor,
         train=True,
     ):
@@ -104,7 +105,6 @@ class MusicClassifier:
         OptimizationParameters are passed to the initialization function
         """
         labels_one_hot = torch.nn.functional.one_hot(labels.to(torch.int64), num_classes=self.opt_params.num_of_genre)
-        y_pred = self.forward(feats)
         y_pred_argmax = torch.argmax(y_pred, dim=-1)
 
         # L2 loss
@@ -116,8 +116,9 @@ class MusicClassifier:
 
         # calculate gradients
         batch_size = feats.shape[0]
-        dW = -2 * feats.T.matmul(labels_one_hot - y_pred) / batch_size
-        db = -2 * torch.sum(labels_one_hot - y_pred, dim=0) / batch_size
+
+        dW = -feats.T.matmul(labels_one_hot - y_pred) / batch_size
+        db = -torch.sum(labels_one_hot - y_pred, dim=0) / batch_size
 
         # update weights
         self.W = self.W - self.opt_params.learning_rate * dW
@@ -184,37 +185,47 @@ class ClassifierHandler:
             loss_mean = 0
             acc_mean = 0
             for features, labels in train_loader:
-                loss, acc = model.backward(features, labels, labels)
+                y_pred = model.forward(features)
+                loss, acc = model.backward(features, y_pred, labels)
                 loss_mean += loss / len(train_loader)
                 acc_mean += acc / len(train_loader)
             print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc_mean:.3f}')
-            train_losses.append(loss_mean)
+            train_losses.append((loss_mean, acc_mean))
             train_epochs.append(epoch_num)
 
             # test
             if (epoch_num + 1) % opt_params.eval_every == 0:
-                loss_mean, acc = model.backward(test_features, test_labels, test_labels, train=False)
+                test_pred = model.forward(test_features)
+                loss_mean, acc = model.backward(test_features, test_pred, test_labels, train=False)
                 print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc:.3f}')
-                test_losses.append(loss_mean)
+                test_losses.append((loss_mean, acc))
                 test_epochs.append(epoch_num)
 
         model.save_model(training_parameters.save_dir)
         print(f'Model saved to: {training_parameters.save_dir}')
 
-        # plot the loss graph
-        plt.plot(train_epochs, train_losses, label='train')
-        plt.plot(test_epochs, test_losses, label='test')
-        plt.xlabel('epoch')
-        plt.ylabel('loss')
-        plt.legend()
-        plt.savefig(os.path.join(training_parameters.save_dir, 'loss_graph.png'))
-        plt.show()
-
+        ClassifierHandler.plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters)
         genre_score = model.forward(test_features)
         test_pred = torch.argmax(genre_score, dim=-1)
         evaluate_model(test_labels, test_pred)
 
         return model
+
+    @staticmethod
+    def plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters):
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        axs[0].plot(train_epochs, [loss for loss, _ in train_losses], label='train')
+        axs[0].plot(test_epochs, [loss for loss, _ in test_losses], label='test')
+        axs[0].set_xlabel('epoch')
+        axs[0].set_ylabel('loss')
+        axs[0].legend()
+        axs[1].plot(train_epochs, [acc for _, acc in train_losses], label='train')
+        axs[1].plot(test_epochs, [acc for _, acc in test_losses], label='test')
+        axs[1].set_xlabel('epoch')
+        axs[1].set_ylabel('acc')
+        axs[1].legend()
+        plt.savefig(os.path.join(training_parameters.save_dir, 'loss_graph.png'))
+        plt.show()
 
     @staticmethod
     def get_pretrained_model(dir_path='model_files') -> MusicClassifier:

@@ -11,34 +11,30 @@ import torchaudio
 
 
 class FeatureExtractor:
-    def __init__(self, sample_rate=16000, n_mfcc=40, n_fft=400, hop_length=160, n_mels=40):
+    def __init__(self, sample_rate=22050):
         self.sample_rate = sample_rate
-        self.n_mfcc = n_mfcc
-        self.n_fft = n_fft
-        self.hop_length = hop_length
-        self.n_mels = n_mels
 
         self.mean = None
         self.std = None
 
-        self.mfcc_gen = partial(
-            librosa.feature.mfcc,
-            sr=self.sample_rate,
-            n_mfcc=self.n_mfcc,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            n_mels=self.n_mels
-        )
+    def extract_amplitude_envelope(self, one_wav):
+        hop_length = 512
+        amplitude_envelope = []
+        for i in range(0, len(one_wav), hop_length):
+            amplitude_envelope.append(np.abs(one_wav[i:i+hop_length]).max())
+        return torch.tensor(amplitude_envelope)
 
-    # def extract_feats(self, wav):
-    #     return torch.stack([self.extract_feats_one_example(one_wav) for one_wav in wav])
 
     def extract_feats(self, one_wav):
-        mfcc = self.mfcc_gen(y=one_wav.numpy()).flatten()
+        mfcc = librosa.feature.mfcc(y=one_wav.numpy(), sr=self.sample_rate).flatten()
         spectral_centroid = librosa.feature.spectral_centroid(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav.numpy()).squeeze()
+        tempo = librosa.beat.tempo(y=one_wav.numpy(), sr=self.sample_rate).flatten()
+        amplitude_envelope = self.extract_amplitude_envelope(one_wav.numpy().squeeze())
+        amplitude_envelope_diff = np.diff(amplitude_envelope)
 
-        # tempo = librosa.beat.tempo(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
+
+
         # onset_env = librosa.onset.onset_strength(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         # chroma_cqt = librosa.feature.chroma_cqt(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         # chroma_cens = librosa.feature.chroma_cens(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
@@ -48,12 +44,12 @@ class FeatureExtractor:
         # spectral_rolloff = librosa.feature.spectral_rolloff(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         # spectral_flatness = librosa.feature.spectral_flatness(y=one_wav.numpy()).squeeze()
 
-
-        return torch.Tensor(np.concatenate([mfcc, spectral_centroid, zero_crossing_rate]))
+        return torch.Tensor(np.concatenate([mfcc, spectral_centroid, zero_crossing_rate, tempo, amplitude_envelope, amplitude_envelope_diff]))
 
     def normalize(self, x):
         # return x
-        return (x - self.mean) / np.maximum(self.std, 0.0001)
+        # return (x - self.mean) / np.maximum(self.std, 0.0001)
+        return x - self.mean
 
     def extract_normed_feats(self, wav):
         assert self.mean is not None and self.std is not None, "Mean and std not set"
@@ -83,6 +79,7 @@ class FeatureExtractor:
         mean = feats_tensor.mean(dim=0)
         std = feats_tensor.std(dim=0)
         self.save_mean_std(save_dir, mean, std)
+
 
 if __name__ == '__main__':
     out, sr = torchaudio.load("parsed_data/classical/train/1.mp3")
