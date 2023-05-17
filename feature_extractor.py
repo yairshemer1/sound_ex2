@@ -5,9 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import librosa
 import librosa.display
-from functools import partial
-
 import torchaudio
+from tqdm import tqdm
 
 
 class FeatureExtractor:
@@ -26,30 +25,19 @@ class FeatureExtractor:
 
 
     def extract_feats(self, one_wav):
-        mfcc = librosa.feature.mfcc(y=one_wav.numpy(), sr=self.sample_rate).flatten()
+        mfcc = torchaudio.transforms.MFCC(sample_rate=self.sample_rate, n_mfcc=40)(one_wav).flatten()
         spectral_centroid = librosa.feature.spectral_centroid(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav.numpy()).squeeze()
         tempo = librosa.beat.tempo(y=one_wav.numpy(), sr=self.sample_rate).flatten()
         amplitude_envelope = self.extract_amplitude_envelope(one_wav.numpy().squeeze())
         amplitude_envelope_diff = np.diff(amplitude_envelope)
 
-
-
-        # onset_env = librosa.onset.onset_strength(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # chroma_cqt = librosa.feature.chroma_cqt(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # chroma_cens = librosa.feature.chroma_cens(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # chroma_stft = librosa.feature.chroma_stft(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # spectral_contrast = librosa.feature.spectral_contrast(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # spectral_bandwidth = librosa.feature.spectral_bandwidth(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # spectral_rolloff = librosa.feature.spectral_rolloff(y=one_wav.numpy(), sr=self.sample_rate).squeeze()
-        # spectral_flatness = librosa.feature.spectral_flatness(y=one_wav.numpy()).squeeze()
-
         return torch.Tensor(np.concatenate([mfcc, spectral_centroid, zero_crossing_rate, tempo, amplitude_envelope, amplitude_envelope_diff]))
 
     def normalize(self, x):
         # return x
-        # return (x - self.mean) / np.maximum(self.std, 0.0001)
-        return x - self.mean
+        return (x - self.mean) / np.maximum(self.std, 0.0001)
+        # return x - self.mean
 
     def extract_normed_feats(self, wav):
         assert self.mean is not None and self.std is not None, "Mean and std not set"
@@ -74,7 +62,7 @@ class FeatureExtractor:
         self.std = np.load(os.path.join(load_dir, "std.npy"))
 
     def calc_mean_std(self, train_dataset, save_dir):
-        feats_arr = [self.extract_feats(wav) for wav, _ in train_dataset]
+        feats_arr = [self.extract_feats(wav) for wav, _ in tqdm(train_dataset)]
         feats_tensor = torch.stack(feats_arr)
         mean = feats_tensor.mean(dim=0)
         std = feats_tensor.std(dim=0)

@@ -1,5 +1,5 @@
+import pickle
 import os
-from abc import abstractmethod
 import torch
 import typing as tp
 from dataclasses import dataclass
@@ -14,6 +14,7 @@ from feature_cache import FeatureCache
 
 plt.style.use('ggplot')
 
+
 @dataclass
 class TrainingParameters:
     """
@@ -24,7 +25,7 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
 
-    batch_size: int = 32
+    batch_size: int = 64
     num_epochs: int = 200
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
@@ -41,9 +42,12 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 12480
+    num_of_features: int = 55320
     num_of_genre: int = 3
     eval_every: int = 10
+
+    dropout_rate = 0.5
+    regularization_factor = 0.001
 
 
 class MusicClassifier:
@@ -63,7 +67,6 @@ class MusicClassifier:
         self.W = torch.rand((opt_params.num_of_features, opt_params.num_of_genre))
         self.b = torch.rand(opt_params.num_of_genre)
 
-
     def exctract_feats(self, wavs: torch.Tensor):
         """
         this function extract features from a given audio.
@@ -74,11 +77,16 @@ class MusicClassifier:
         assert features.shape[1] == self.opt_params.num_of_features
         return features
 
-    def forward(self, feats: torch.Tensor) -> tp.Any:
+    def forward(self, feats: torch.Tensor, in_train=True) -> tp.Any:
         """
         this function performs a forward pass throuh the model, outputting scores for every class.
         feats: batch of extracted faetures
         """
+        if in_train:
+            dropout_mask = torch.rand(feats.shape) > self.opt_params.dropout_rate
+            feats = feats * dropout_mask
+        else:
+            feats = feats * (1 - self.opt_params.dropout_rate)
         model_output = torch.matmul(feats, self.W) + self.b
 
         def softmax(x):
@@ -88,11 +96,11 @@ class MusicClassifier:
         return softmax(model_output)
 
     def backward(
-        self,
-        feats: torch.Tensor,
-        y_pred: torch.Tensor,
-        labels: torch.Tensor,
-        train=True,
+            self,
+            feats: torch.Tensor,
+            y_pred: torch.Tensor,
+            labels: torch.Tensor,
+            train=True,
     ):
         """
         this function should perform a backward pass through the model.
@@ -117,12 +125,14 @@ class MusicClassifier:
         # calculate gradients
         batch_size = feats.shape[0]
 
-        dW = -feats.T.matmul(labels_one_hot - y_pred) / batch_size
-        db = -torch.sum(labels_one_hot - y_pred, dim=0) / batch_size
+        dW = feats.T.matmul(y_pred - labels_one_hot) / batch_size
+        db = torch.sum(y_pred - labels_one_hot, dim=0) / batch_size
+
+        dW += 2 * self.opt_params.regularization_factor * self.W
 
         # update weights
-        self.W = self.W - self.opt_params.learning_rate * dW
-        self.b = self.b - self.opt_params.learning_rate * db
+        self.W -= self.opt_params.learning_rate * dW
+        self.b -= self.opt_params.learning_rate * db
 
         return loss, acc
 
@@ -139,7 +149,7 @@ class MusicClassifier:
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
         features = self.exctract_feats(wavs)
-        genre_score = self.forward(features)
+        genre_score = self.forward(features, in_train=False)
         predicted_labels = torch.argmax(genre_score, dim=-1)
         return predicted_labels
 
@@ -162,10 +172,15 @@ class ClassifierHandler:
         opt_params = OptimizationParameters()
         feature_extractor = FeatureExtractor()
 
-        feature_cache = FeatureCache(feature_extractor)
 
-        dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
-        feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
+        # feature_cache = FeatureCache(feature_extractor)
+
+        feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
+        print(f'load feature cache from pickle: {len(feature_cache.cache)}!!!')
+        print('Warning: feature cache is not updated!!!')
+
+        # dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
+        # feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
         feature_extractor.load_mean_std(training_parameters.save_dir)
 
         model = MusicClassifier(opt_params, feature_extractor)
@@ -185,17 +200,22 @@ class ClassifierHandler:
             loss_mean = 0
             acc_mean = 0
             for features, labels in train_loader:
-                y_pred = model.forward(features)
+                y_pred = model.forward(features, in_train=True)
                 loss, acc = model.backward(features, y_pred, labels)
                 loss_mean += loss / len(train_loader)
                 acc_mean += acc / len(train_loader)
+
+            if epoch_num == 0:
+                with open('feature_cache.pkl', 'wb') as f:
+                    pickle.dump(feature_cache, f)
+                print(f'save feature cache to pickle: {len(feature_cache.cache)}!!!')
             print(f'Train - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc_mean:.3f}')
             train_losses.append((loss_mean, acc_mean))
             train_epochs.append(epoch_num)
 
             # test
             if (epoch_num + 1) % opt_params.eval_every == 0:
-                test_pred = model.forward(test_features)
+                test_pred = model.forward(test_features, in_train=False)
                 loss_mean, acc = model.backward(test_features, test_pred, test_labels, train=False)
                 print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc:.3f}')
                 test_losses.append((loss_mean, acc))
@@ -205,7 +225,7 @@ class ClassifierHandler:
         print(f'Model saved to: {training_parameters.save_dir}')
 
         ClassifierHandler.plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters)
-        genre_score = model.forward(test_features)
+        genre_score = model.forward(test_features, in_train=False)
         test_pred = torch.argmax(genre_score, dim=-1)
         evaluate_model(test_labels, test_pred)
 
