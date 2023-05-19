@@ -29,11 +29,12 @@ class Audioset:
         file_path, genre = sample["path"], sample["label"]
         genre = genre.replace("-", "_")
         label = Genre[genre.upper()].value
+        if self.tqdm.n < self.tqdm.total:
+            self.tqdm.update(1)
+
         if self.feature_cache is None:
             out, sr = torchaudio.load(file_path)
         else:
-            if self.tqdm.n < self.tqdm.total:
-                self.tqdm.update(1)
             out = self.feature_cache[file_path]
         return out.squeeze(), label
 

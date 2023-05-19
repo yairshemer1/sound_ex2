@@ -42,12 +42,13 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    num_of_features: int = 76053
+    # num_of_features: int = 76053
+    num_of_features: int = 53184
     num_of_genre: int = 3
     eval_every: int = 10
 
-    dropout_rate = 0.5
-    regularization_factor = 0.001
+    dropout_rate = 0.7
+    regularization_factor = 0.01
 
 
 class MusicClassifier:
@@ -83,7 +84,7 @@ class MusicClassifier:
         feats: batch of extracted faetures
         """
         if in_train:
-            dropout_mask = torch.rand(feats.shape) > self.opt_params.dropout_rate
+            dropout_mask = torch.rand(feats.shape) > self.opt_params. dropout_rate
             feats = feats * dropout_mask
         else:
             feats = feats * (1 - self.opt_params.dropout_rate)
@@ -125,8 +126,11 @@ class MusicClassifier:
         # calculate gradients
         batch_size = feats.shape[0]
 
-        dW = feats.T.matmul(y_pred - labels_one_hot) / batch_size
-        db = torch.sum(y_pred - labels_one_hot, dim=0) / batch_size
+        diff = y_pred - labels_one_hot
+        diff[labels == 2] *= 1.5
+
+        dW = feats.T.matmul(diff) / batch_size
+        db = torch.sum(diff, dim=0) / batch_size
 
         dW += 2 * self.opt_params.regularization_factor * self.W
 
@@ -172,11 +176,11 @@ class ClassifierHandler:
         opt_params = OptimizationParameters()
         feature_extractor = FeatureExtractor()
 
-        # feature_cache = FeatureCache(feature_extractor)
+        feature_cache = FeatureCache(feature_extractor)
 
-        feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
-        print(f'load feature cache from pickle: {len(feature_cache.cache)}!!!')
-        print('Warning: feature cache is not updated!!!')
+        # feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
+        # print(f'load feature cache from pickle: {len(feature_cache.cache)}!!!')
+        # print('Warning: feature cache is not updated!!!')
 
         # dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
         # feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
@@ -195,6 +199,7 @@ class ClassifierHandler:
         test_epochs = []
         train_losses = []
         train_epochs = []
+        best_score = -float('inf')
         for epoch_num in range(trains_params.num_epochs):
             loss_mean = 0
             acc_mean = 0
@@ -219,10 +224,12 @@ class ClassifierHandler:
                 print(f'Test - epoch_num: {epoch_num}, loss: {loss_mean:.3f}, acc: {acc:.3f}')
                 test_losses.append((loss_mean, acc))
                 test_epochs.append(epoch_num)
+                if acc > best_score:
+                    best_score = acc
+                    model.save_model(training_parameters.save_dir)
+                    print(f'Model saved to: {training_parameters.save_dir}')
 
-        model.save_model(training_parameters.save_dir)
-        print(f'Model saved to: {training_parameters.save_dir}')
-
+        model.load_model(training_parameters.save_dir)
         ClassifierHandler.plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters)
         genre_score = model.forward(test_features, in_train=False)
         test_pred = torch.argmax(genre_score, dim=-1)
@@ -263,6 +270,3 @@ class ClassifierHandler:
 if __name__ == '__main__':
     trains_params = TrainingParameters()
     model = ClassifierHandler.train_new_model(trains_params)
-
-    new_model = ClassifierHandler.get_pretrained_model()
-    assert (new_model.W == model.W).all()

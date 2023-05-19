@@ -15,6 +15,7 @@ class FeatureExtractor:
 
         self.mean = None
         self.std = None
+        self.n_mfcc = 50
 
     def extract_amplitude_envelope(self, one_wav):
         hop_length = 512
@@ -24,34 +25,48 @@ class FeatureExtractor:
         return torch.tensor(amplitude_envelope)
 
     def extract_feats(self, one_wav):
-        mfcc = torchaudio.transforms.MFCC(sample_rate=self.sample_rate, n_mfcc=50)(one_wav).numpy().squeeze()
+        mfcc = torchaudio.transforms.MFCC(sample_rate=self.sample_rate, n_mfcc=self.n_mfcc, melkwargs={"n_fft": 512})(one_wav).numpy().squeeze()
         one_wav = one_wav.numpy().squeeze()
         zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav).squeeze()
-        spectral_centroid = librosa.feature.spectral_centroid(y=one_wav, sr=self.sample_rate).squeeze()
         tempo = librosa.beat.tempo(y=one_wav, sr=self.sample_rate).flatten()
-        chroma_stft = librosa.feature.chroma_stft(y=one_wav, sr=self.sample_rate).flatten()
-        rms = librosa.feature.rms(y=one_wav).squeeze()
-        amplitude_envelope = self.extract_amplitude_envelope(one_wav)
-        amplitude_envelope_diff = np.diff(amplitude_envelope)
-
         stats_feats = [one_wav.std(), one_wav.mean()] + [np.percentile(one_wav, i) for i in range(0, 101, 10)]
         mfcc_stats = [mfcc.std(axis=1), mfcc.mean(axis=1)] + [np.percentile(mfcc, i, axis=1) for i in range(0, 101, 10)]
+
         return torch.Tensor(
             np.concatenate(
                 [
                     np.array(mfcc_stats).flatten(),
                     np.array(stats_feats),
                     mfcc.flatten(),
-                    chroma_stft,
                     zero_crossing_rate,
-                    tempo,
-                    rms,
-                    amplitude_envelope,
-                    amplitude_envelope_diff,
-                    spectral_centroid,
+                    tempo
                 ]
             )
         )
+
+        # spectral_centroid = librosa.feature.spectral_centroid(y=one_wav, sr=self.sample_rate).squeeze()
+        #
+        # chroma_stft = librosa.feature.chroma_stft(y=one_wav, sr=self.sample_rate).flatten()
+        # rms = librosa.feature.rms(y=one_wav).squeeze()
+        # amplitude_envelope = self.extract_amplitude_envelope(one_wav)
+        # amplitude_envelope_diff = np.diff(amplitude_envelope)
+        #
+        # return torch.Tensor(
+        #     np.concatenate(
+        #         [
+        #             np.array(mfcc_stats).flatten(),
+        #             np.array(stats_feats),
+        #             mfcc.flatten(),
+        #             chroma_stft,
+        #             zero_crossing_rate,
+        #             tempo,
+        #             rms,
+        #             amplitude_envelope,
+        #             amplitude_envelope_diff,
+        #             spectral_centroid,
+        #         ]
+        #     )
+        # )
 
     def normalize(self, x):
         return x
