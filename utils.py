@@ -1,5 +1,3 @@
-import datetime
-
 from enum import Enum
 
 
@@ -13,8 +11,3 @@ class Genre(Enum):
     HEAVY_ROCK: int = 1
     REGGAE: int = 2
 
-
-def get_tme_now():
-    now = datetime.datetime.now()
-    time_str = now.strftime("%Y%m%d_%H%M")
-    return time_str

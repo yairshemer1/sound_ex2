@@ -5,12 +5,16 @@ import typing as tp
 from dataclasses import dataclass
 import numpy as np
 from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader
+import librosa.feature
+import librosa
+import librosa.display
+import torchaudio
 
-from evaluate import evaluate_model, get_model_accuracy
+from torch.utils.data import DataLoader
+from evaluate import evaluate_model, get_model_accuracy, plot_loss
 from data_loader import DataSet
-from feature_extractor import FeatureExtractor
 from feature_cache import FeatureCache
+from utils import Genre
 
 plt.style.use('ggplot')
 
@@ -25,8 +29,8 @@ class TrainingParameters:
     default values (so run won't break when we test this).
     """
 
-    batch_size: int = 32
-    num_epochs: int = 200
+    batch_size: int = 256
+    num_epochs: int = 150
     train_json_path: str = "jsons/train.json"  # you should use this file path to load your train data
     test_json_path: str = "jsons/test.json"  # you should use this file path to load your test data
 
@@ -42,13 +46,13 @@ class OptimizationParameters:
 
     learning_rate: float = 0.001
 
-    # num_of_features: int = 76053
-    num_of_features: int = 53184
+    num_of_features: int = 45771
     num_of_genre: int = 3
     eval_every: int = 10
+    sample_rate: int = 22050
 
-    dropout_rate = 0.7
-    regularization_factor = 0.01
+    dropout_rate = 0.85
+    regularization_factor = 0.001
 
 
 class MusicClassifier:
@@ -56,7 +60,7 @@ class MusicClassifier:
     You should Implement your classifier object here
     """
 
-    def __init__(self, opt_params: OptimizationParameters, feature_extractor, **kwargs):
+    def __init__(self, opt_params: OptimizationParameters, **kwargs):
         """
         This defines the classifier object.
         - You should defiend your weights and biases as class components here.
@@ -64,18 +68,52 @@ class MusicClassifier:
         - You should use `opt_params` for your optimization and you are welcome to experiment
         """
         self.opt_params = opt_params
-        self.feature_extractor = feature_extractor
         self.W = torch.rand((opt_params.num_of_features, opt_params.num_of_genre))
         self.b = torch.rand(opt_params.num_of_genre)
 
-    def exctract_feats(self, wavs: torch.Tensor):
+    @staticmethod
+    def extract_amplitude_envelope(one_wav):
+        hop_length = 256
+        amplitude_envelope = []
+        for i in range(0, len(one_wav), hop_length):
+            amplitude_envelope.append(np.abs(one_wav[i: i + hop_length]).max())
+        return torch.tensor(amplitude_envelope)
+
+    def extract_feats(self, wavs: torch.Tensor):
         """
         this function extract features from a given audio.
         we will not be observing this method.
         """
+        return torch.stack([self.extract_feats_one_wav(one_wav) for one_wav in wavs])
 
-        features = self.feature_extractor.extract_normed_feats(wavs)
-        assert features.shape[1] == self.opt_params.num_of_features
+    def extract_feats_one_wav(self, one_wav: torch.Tensor):
+
+        mfcc = torchaudio.transforms.MFCC(sample_rate=self.opt_params.sample_rate, n_mfcc=40, melkwargs={"n_fft": 512})(one_wav).numpy().squeeze()
+        one_wav = one_wav.numpy().squeeze()
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(y=one_wav).squeeze()
+        tempo = librosa.beat.tempo(y=one_wav, sr=self.opt_params.sample_rate).flatten()
+        stats_feats = [one_wav.std(), one_wav.mean()] + [np.percentile(one_wav, i) for i in range(0, 101, 10)]
+        mfcc_stats = [mfcc.std(axis=1), mfcc.mean(axis=1)] + [np.percentile(mfcc, i, axis=1) for i in range(0, 101, 10)]
+        amplitude_envelope = self.extract_amplitude_envelope(one_wav)
+        amplitude_envelope_first_der = np.diff(amplitude_envelope)
+        amplitude_envelope_sec_der = np.diff(amplitude_envelope_first_der)
+
+        features = torch.Tensor(
+            np.concatenate(
+                [
+                    np.array(mfcc_stats).flatten(),
+                    np.array(stats_feats),
+                    mfcc.flatten(),
+                    zero_crossing_rate,
+                    tempo,
+                    amplitude_envelope,
+                    amplitude_envelope_first_der,
+                    amplitude_envelope_sec_der,
+                ]
+            )
+        )
+
+        assert len(features) == self.opt_params.num_of_features, f'new num_of_features {len(features)}'
         return features
 
     def forward(self, feats: torch.Tensor, in_train=True) -> tp.Any:
@@ -84,7 +122,7 @@ class MusicClassifier:
         feats: batch of extracted faetures
         """
         if in_train:
-            dropout_mask = torch.rand(feats.shape) > self.opt_params. dropout_rate
+            dropout_mask = torch.rand(feats.shape) > self.opt_params.dropout_rate
             feats = feats * dropout_mask
         else:
             feats = feats * (1 - self.opt_params.dropout_rate)
@@ -97,11 +135,11 @@ class MusicClassifier:
         return softmax(model_output)
 
     def backward(
-        self,
-        feats: torch.Tensor,
-        y_pred: torch.Tensor,
-        labels: torch.Tensor,
-        train=True,
+            self,
+            feats: torch.Tensor,
+            y_pred: torch.Tensor,
+            labels: torch.Tensor,
+            train=True,
     ):
         """
         this function should perform a backward pass through the model.
@@ -127,7 +165,6 @@ class MusicClassifier:
         batch_size = feats.shape[0]
 
         diff = y_pred - labels_one_hot
-        diff[labels == 2] *= 1.5
 
         dW = feats.T.matmul(diff) / batch_size
         db = torch.sum(diff, dim=0) / batch_size
@@ -152,12 +189,13 @@ class MusicClassifier:
         this method should recieve a torch.Tensor of shape [batch, channels, time] (float tensor)
         and a output batch of corresponding labels [B, 1] (integer tensor)
         """
-        features = self.exctract_feats(wavs)
+        features = self.extract_feats(wavs)
         genre_score = self.forward(features, in_train=False)
-        predicted_labels = torch.argmax(genre_score, dim=-1)
+        predicted_labels = torch.argmax(genre_score, dim=-1, keepdim=True)
         return predicted_labels
 
     def save_model(self, save_dir):
+        os.makedirs(save_dir, exist_ok=True)
         torch.save(self.W, os.path.join(save_dir, 'W.pt'))
         torch.save(self.b, os.path.join(save_dir, 'b.pt'))
 
@@ -168,25 +206,21 @@ class MusicClassifier:
 
 class ClassifierHandler:
     @staticmethod
-    def train_new_model(training_parameters: TrainingParameters) -> MusicClassifier:
+    def train_new_model(training_parameters: TrainingParameters, use_pickle: bool = False) -> MusicClassifier:
         """
         This function should create a new 'MusicClassifier' object and train it from scratch.
         You could program your training loop / training manager as you see fit.
         """
         opt_params = OptimizationParameters()
-        feature_extractor = FeatureExtractor()
 
-        feature_cache = FeatureCache(feature_extractor)
+        model = MusicClassifier(opt_params)
 
-        # feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
-        # print(f'load feature cache from pickle: {len(feature_cache.cache)}!!!')
-        # print('Warning: feature cache is not updated!!!')
-
-        # dataset_for_norm = DataSet(json_dir=training_parameters.train_json_path)
-        # feature_extractor.calc_mean_std(dataset_for_norm, training_parameters.save_dir)
-        feature_extractor.load_mean_std(training_parameters.save_dir)
-
-        model = MusicClassifier(opt_params, feature_extractor)
+        if use_pickle and os.path.exists('feature_cache.pkl'):
+            feature_cache = pickle.load(open('feature_cache.pkl', 'rb'))
+            print(f'load feature cache from pickle: {len(feature_cache.cache)}!!!')
+            print('Warning: feature cache is not updated!!!')
+        else:
+            feature_cache = FeatureCache(model)
 
         train_dataset = DataSet(json_dir=training_parameters.train_json_path, feature_cache=feature_cache)
         train_loader = DataLoader(train_dataset, batch_size=training_parameters.batch_size, shuffle=True)
@@ -200,7 +234,7 @@ class ClassifierHandler:
         train_losses = []
         train_epochs = []
         best_score = -float('inf')
-        for epoch_num in range(trains_params.num_epochs):
+        for epoch_num in range(training_parameters.num_epochs):
             loss_mean = 0
             acc_mean = 0
             for features, labels in train_loader:
@@ -230,28 +264,11 @@ class ClassifierHandler:
                     print(f'Model saved to: {training_parameters.save_dir}')
 
         model.load_model(training_parameters.save_dir)
-        ClassifierHandler.plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters)
+        plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters)
         genre_score = model.forward(test_features, in_train=False)
         test_pred = torch.argmax(genre_score, dim=-1)
-        evaluate_model(test_labels, test_pred)
-
+        evaluate_model(test_labels, test_pred, training_parameters.save_dir)
         return model
-
-    @staticmethod
-    def plot_loss(test_epochs, test_losses, train_epochs, train_losses, training_parameters):
-        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-        axs[0].plot(train_epochs, [loss for loss, _ in train_losses], label='train')
-        axs[0].plot(test_epochs, [loss for loss, _ in test_losses], label='test')
-        axs[0].set_xlabel('epoch')
-        axs[0].set_ylabel('loss')
-        axs[0].legend()
-        axs[1].plot(train_epochs, [acc for _, acc in train_losses], label='train')
-        axs[1].plot(test_epochs, [acc for _, acc in test_losses], label='test')
-        axs[1].set_xlabel('epoch')
-        axs[1].set_ylabel('acc')
-        axs[1].legend()
-        plt.savefig(os.path.join(training_parameters.save_dir, 'loss_graph.png'))
-        plt.show()
 
     @staticmethod
     def get_pretrained_model(dir_path='model_files') -> MusicClassifier:
@@ -260,13 +277,11 @@ class ClassifierHandler:
         hyperparameters and return the loaded model
         """
         opt_params = OptimizationParameters()
-        feature_extractor = FeatureExtractor()
-        feature_extractor.load_mean_std(dir_path)
-        model = MusicClassifier(opt_params, feature_extractor)
+        model = MusicClassifier(opt_params)
         model.load_model(dir_path)
         return model
 
 
 if __name__ == '__main__':
     trains_params = TrainingParameters()
-    model = ClassifierHandler.train_new_model(trains_params)
+    model = ClassifierHandler.train_new_model(trains_params, use_pickle=True)
